@@ -51,13 +51,10 @@ def preprocessing() -> ColumnTransformer:
 
 # Three candidate models with different algorithms/settings.
 CANDIDATES = {
-    "logreg": LogisticRegression(max_iter=1000),
-    "random_forest": RandomForestClassifier(
-        n_estimators=200,
-        max_depth=8,
-        random_state=42,
+    "weak_logreg": LogisticRegression(
+        C=0.00001,
+        max_iter=1000,
     ),
-    "gradient_boosting": GradientBoostingClassifier(random_state=42),
 }
 
 
