@@ -1,4 +1,4 @@
-
+#
 # Lab 2 + Lab 3: test, build, smoke-test and scan.
 # Local deployment is handled separately with Docker Compose (Lab 3 Option B).
 name: ci
