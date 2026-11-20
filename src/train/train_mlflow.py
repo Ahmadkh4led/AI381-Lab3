@@ -1,3 +1,4 @@
+
 """Lab 3: train several candidate models and record every run in MLflow.
 
     docker compose -f docker-compose.mlflow.yml up -d --wait     # the tracking server
@@ -36,7 +37,7 @@ from src import schema
 DATA_FILE = os.getenv("DATA_FILE", "data/churn_v1.csv")
 EXPERIMENT = "churn"
 SLICE_COLUMN = "contract"  # F1 is also reported for each contract type; TODO: change it if you prefer another slice
-BATCH = os.getenv("BATCH", os.getenv("GIT_SHA", "local")[:7])  # runs trained together share a batch tag
+BATCH = os.getenv("BATCH", os.getenv("GIT_SHA", "local")[:7])
 
 
 def preprocessing() -> ColumnTransformer:
@@ -48,11 +49,14 @@ def preprocessing() -> ColumnTransformer:
     )
 
 
-# TODO 1: choose at least three candidates and justify them in MODEL_SELECTION.md.
-# Change the settings, not just the names: a different model family or a clearly different setting each time.
+# Three candidate models with different algorithms/settings.
 CANDIDATES = {
     "logreg": LogisticRegression(max_iter=1000),
-    "random_forest": RandomForestClassifier(n_estimators=200, max_depth=8, random_state=42),
+    "random_forest": RandomForestClassifier(
+        n_estimators=200,
+        max_depth=8,
+        random_state=42,
+    ),
     "gradient_boosting": GradientBoostingClassifier(random_state=42),
 }
 
@@ -81,7 +85,9 @@ def main() -> None:
 
     df = schema.validate(pd.read_csv(DATA_FILE))
     X, y = df[schema.FEATURES], df[schema.TARGET]
-    X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
     data_sha = hashlib.sha256(Path(DATA_FILE).read_bytes()).hexdigest()[:12]
 
     for name, clf in CANDIDATES.items():
@@ -90,14 +96,16 @@ def main() -> None:
         pred = proba > 0.5
 
         with mlflow.start_run(run_name=name) as run:
-            # parameters: what this run is
+            # Parameters: what this run is.
             mlflow.log_param("model", name)
             mlflow.log_params({f"clf__{k}": v for k, v in clf.get_params().items()})
             mlflow.log_param("data_file", DATA_FILE)
-            mlflow.log_param("data_sha256", data_sha)  # TODO 2 (explain in your video): why log a hash of the data?
-            mlflow.set_tags({"batch": BATCH, "git_sha": os.getenv("GIT_SHA", "local")})
+            mlflow.log_param("data_sha256", data_sha)
+            mlflow.set_tags(
+                {"batch": BATCH, "git_sha": os.getenv("GIT_SHA", "local")}
+            )
 
-            # metrics: how good it is
+            # Metrics: how good it is.
             metrics = {
                 "auc": roc_auc_score(y_te, proba),
                 "f1": f1_score(y_te, pred),
@@ -106,16 +114,30 @@ def main() -> None:
             }
             for value in X_te[SLICE_COLUMN].unique():
                 mask = (X_te[SLICE_COLUMN] == value).to_numpy()
-                metrics[f"f1_{SLICE_COLUMN}_{value}"] = f1_score(y_te[mask], pred[mask], zero_division=0)
-            mlflow.log_metrics({k: round(float(v), 4) for k, v in metrics.items()})
+                metrics[f"f1_{SLICE_COLUMN}_{value}"] = f1_score(
+                    y_te[mask], pred[mask], zero_division=0
+                )
+            mlflow.log_metrics(
+                {k: round(float(v), 4) for k, v in metrics.items()}
+            )
 
-            # the model, with its signature (inputs and outputs) and an example row
+            # Model signature, input example, and trusted tree type.
             signature = infer_signature(X_te, proba)
-            info = mlflow.sklearn.log_model(model, name="model", signature=signature, input_example=X_te.head(3), skops_trusted_types=["sklearn.tree._tree.Tree"])
+            info = mlflow.sklearn.log_model(
+                model,
+                name="model",
+                signature=signature,
+                input_example=X_te.head(3),
+                skops_trusted_types=["sklearn.tree._tree.Tree"],
+            )
             mlflow.set_tag("model_uri", info.model_uri)
 
-            print(f"{name:18s} run {run.info.run_id[:8]}  auc {metrics['auc']:.3f}  f1 {metrics['f1']:.3f}  "
-                  f"p95 {metrics['p95_latency_ms']:.1f} ms  size {metrics['size_kb']:.0f} KB")
+            print(
+                f"{name:18s} run {run.info.run_id[:8]}  "
+                f"auc {metrics['auc']:.3f}  f1 {metrics['f1']:.3f}  "
+                f"p95 {metrics['p95_latency_ms']:.1f} ms  "
+                f"size {metrics['size_kb']:.0f} KB"
+            )
 
     print(json.dumps({"batch": BATCH, "experiment": EXPERIMENT, "data_sha256": data_sha}))
 
